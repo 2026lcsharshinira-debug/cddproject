@@ -1,35 +1,31 @@
 
 from flask import Flask, render_template, request, redirect, url_for, flash
 import sqlite3
+import os
 
 app = Flask(__name__)
 app.secret_key = "hostelroomallocation_secret"
 
-DATABASE = "hostel.db"
+# Database configuration for local and Docker execution
+DATABASE = os.environ.get("DATABASE_PATH", "hostel.db")
 
 
 # Database connection
 def get_db():
+    db_folder = os.path.dirname(DATABASE)
+
+    if db_folder:
+        os.makedirs(db_folder, exist_ok=True)
+
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 
 # Create database and tables
 def init_db():
     conn = get_db()
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS students (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            usn TEXT UNIQUE NOT NULL,
-            department TEXT NOT NULL,
-            year TEXT NOT NULL,
-            room_id INTEGER,
-            FOREIGN KEY(room_id) REFERENCES rooms(id)
-        )
-    """)
 
     conn.execute("""
         CREATE TABLE IF NOT EXISTS rooms (
@@ -39,7 +35,19 @@ def init_db():
         )
     """)
 
-    # Insert sample rooms only if the table is empty
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS students (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            usn TEXT UNIQUE NOT NULL,
+            department TEXT NOT NULL,
+            year TEXT NOT NULL,
+            room_id INTEGER,
+            FOREIGN KEY (room_id) REFERENCES rooms(id)
+        )
+    """)
+
+    # Insert sample rooms if no rooms exist
     count = conn.execute(
         "SELECT COUNT(*) FROM rooms"
     ).fetchone()[0]
@@ -63,7 +71,7 @@ def init_db():
     conn.close()
 
 
-# Dashboard
+# Home page / Dashboard
 @app.route("/")
 def index():
     conn = get_db()
@@ -77,10 +85,11 @@ def index():
 
     rooms = conn.execute("""
         SELECT rooms.*,
-        COUNT(students.id) AS occupied
+               COUNT(students.id) AS occupied
         FROM rooms
         LEFT JOIN students ON rooms.id = students.room_id
         GROUP BY rooms.id
+        ORDER BY rooms.room_number
     """).fetchall()
 
     total_students = conn.execute(
@@ -108,13 +117,13 @@ def index():
     )
 
 
-# Add student
+# Add new student
 @app.route("/add_student", methods=["POST"])
 def add_student():
-    name = request.form["name"].strip()
-    usn = request.form["usn"].strip()
-    department = request.form["department"].strip()
-    year = request.form["year"]
+    name = request.form.get("name", "").strip()
+    usn = request.form.get("usn", "").strip()
+    department = request.form.get("department", "").strip()
+    year = request.form.get("year", "").strip()
 
     if not all([name, usn, department, year]):
         flash("Please fill all student details.", "error")
@@ -141,7 +150,7 @@ def add_student():
     return redirect(url_for("index"))
 
 
-# Automatically allocate room
+# Automatically allocate available room
 @app.route("/allocate/<int:student_id>", methods=["POST"])
 def allocate(student_id):
     conn = get_db()
@@ -153,8 +162,10 @@ def allocate(student_id):
 
     if student is None:
         flash("Student not found.", "error")
+
     elif student["room_id"] is not None:
         flash("Student already has a room.", "error")
+
     else:
         room = conn.execute("""
             SELECT rooms.id, rooms.room_number
@@ -174,10 +185,12 @@ def allocate(student_id):
             """, (room["id"], student_id))
 
             conn.commit()
+
             flash(
                 f"Room {room['room_number']} allocated successfully!",
                 "success"
             )
+
         else:
             flash("Sorry! No rooms are available.", "error")
 
@@ -185,21 +198,33 @@ def allocate(student_id):
     return redirect(url_for("index"))
 
 
-# Vacate room
+# Vacate student room
 @app.route("/vacate/<int:student_id>", methods=["POST"])
 def vacate(student_id):
     conn = get_db()
 
-    conn.execute("""
-        UPDATE students
-        SET room_id = NULL
-        WHERE id = ?
-    """, (student_id,))
+    student = conn.execute(
+        "SELECT room_id FROM students WHERE id = ?",
+        (student_id,)
+    ).fetchone()
 
-    conn.commit()
+    if student is None:
+        flash("Student not found.", "error")
+
+    elif student["room_id"] is None:
+        flash("Student has no allocated room.", "error")
+
+    else:
+        conn.execute("""
+            UPDATE students
+            SET room_id = NULL
+            WHERE id = ?
+        """, (student_id,))
+
+        conn.commit()
+        flash("Room vacated successfully!", "success")
+
     conn.close()
-
-    flash("Room vacated successfully!", "success")
     return redirect(url_for("index"))
 
 
@@ -208,18 +233,27 @@ def vacate(student_id):
 def delete_student(student_id):
     conn = get_db()
 
-    conn.execute(
-        "DELETE FROM students WHERE id = ?",
+    student = conn.execute(
+        "SELECT id FROM students WHERE id = ?",
         (student_id,)
-    )
+    ).fetchone()
 
-    conn.commit()
+    if student is None:
+        flash("Student not found.", "error")
+    else:
+        conn.execute(
+            "DELETE FROM students WHERE id = ?",
+            (student_id,)
+        )
+
+        conn.commit()
+        flash("Student deleted successfully!", "success")
+
     conn.close()
-
-    flash("Student deleted successfully!", "success")
     return redirect(url_for("index"))
 
 
+# Run Flask application
 if __name__ == "__main__":
     init_db()
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=False)
