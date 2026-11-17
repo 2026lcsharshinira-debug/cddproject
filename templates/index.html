@@ -1,0 +1,236 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hostel Room Allocation</title>
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+
+<header>
+    <div>
+        <h1>🏨 Hostel Room Allocation</h1>
+        <p>Smart Hostel Management Dashboard</p>
+    </div>
+</header>
+
+<div class="container">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+            <div class="message {{ category }}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endwith %}
+
+    <!-- Dashboard cards -->
+    <section class="dashboard">
+
+        <div class="card">
+            <h3>Total Students</h3>
+            <h2>{{ total_students }}</h2>
+        </div>
+
+        <div class="card">
+            <h3>Allocated Students</h3>
+            <h2>{{ allocated }}</h2>
+        </div>
+
+        <div class="card">
+            <h3>Available Beds</h3>
+            <h2>{{ available }}</h2>
+        </div>
+
+        <div class="card">
+            <h3>Total Rooms</h3>
+            <h2>{{ rooms|length }}</h2>
+        </div>
+
+    </section>
+
+    <!-- Add student -->
+    <section class="panel">
+
+        <h2>➕ Register New Student</h2>
+
+        <form action="/add_student" method="POST">
+
+            <div class="form-grid">
+
+                <input type="text"
+                       name="name"
+                       placeholder="Student Name"
+                       required>
+
+                <input type="text"
+                       name="usn"
+                       placeholder="Student USN"
+                       required>
+
+                <input type="text"
+                       name="department"
+                       placeholder="Department"
+                       required>
+
+                <select name="year" required>
+                    <option value="">Select Year</option>
+                    <option value="1st Year">1st Year</option>
+                    <option value="2nd Year">2nd Year</option>
+                    <option value="3rd Year">3rd Year</option>
+                    <option value="4th Year">4th Year</option>
+                </select>
+
+            </div>
+
+            <button type="submit" class="add-btn">
+                Add Student
+            </button>
+
+        </form>
+
+    </section>
+
+    <!-- Student list -->
+    <section class="panel">
+
+        <h2>👨‍🎓 Student Details</h2>
+
+        <div class="table-container">
+        <table>
+
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>USN</th>
+                    <th>Department</th>
+                    <th>Year</th>
+                    <th>Room</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+
+            <tbody>
+
+            {% for student in students %}
+
+                <tr>
+                    <td>{{ student.id }}</td>
+                    <td>{{ student.name }}</td>
+                    <td>{{ student.usn }}</td>
+                    <td>{{ student.department }}</td>
+                    <td>{{ student.year }}</td>
+
+                    <td>
+                        {{ student.room_number or "Not Allocated" }}
+                    </td>
+
+                    <td>
+                        {% if student.room_id %}
+                            <span class="allocated">Allocated</span>
+                        {% else %}
+                            <span class="pending">Pending</span>
+                        {% endif %}
+                    </td>
+
+                    <td class="actions">
+
+                        {% if not student.room_id %}
+                            <form action="/allocate/{{ student.id }}"
+                                  method="POST">
+                                <button class="allocate-btn">
+                                    Allocate
+                                </button>
+                            </form>
+                        {% else %}
+                            <form action="/vacate/{{ student.id }}"
+                                  method="POST">
+                                <button class="vacate-btn">
+                                    Vacate
+                                </button>
+                            </form>
+                        {% endif %}
+
+                        <form action="/delete/{{ student.id }}"
+                              method="POST"
+                              onsubmit="return confirm('Delete this student?')">
+
+                            <button class="delete-btn">
+                                Delete
+                            </button>
+
+                        </form>
+
+                    </td>
+                </tr>
+
+            {% else %}
+
+                <tr>
+                    <td colspan="8">No students registered yet.</td>
+                </tr>
+
+            {% endfor %}
+
+            </tbody>
+        </table>
+        </div>
+
+    </section>
+
+    <!-- Room availability -->
+    <section class="panel">
+
+        <h2>🏠 Room Availability</h2>
+
+        <div class="room-grid">
+
+            {% for room in rooms %}
+
+                <div class="room-card">
+
+                    <h3>Room {{ room.room_number }}</h3>
+
+                    <p>
+                        Capacity: {{ room.capacity }}
+                    </p>
+
+                    <p>
+                        Occupied: {{ room.occupied }}
+                    </p>
+
+                    <p>
+                        Available:
+                        {{ room.capacity - room.occupied }}
+                    </p>
+
+                    {% if room.occupied >= room.capacity %}
+                        <span class="full">FULL</span>
+                    {% else %}
+                        <span class="available">AVAILABLE</span>
+                    {% endif %}
+
+                </div>
+
+            {% endfor %}
+
+        </div>
+
+    </section>
+
+</div>
+
+<footer>
+    <p>© 2026 Hostel Room Allocation System</p>
+</footer>
+
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+
+</body>
+</html>
